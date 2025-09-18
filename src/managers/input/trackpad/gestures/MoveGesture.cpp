@@ -28,42 +28,24 @@ void CMoveTrackpadGesture::update(const ITrackpadGesture::STrackpadGestureUpdate
     
     // Asymptotic function parameters
     const float MAX_OFFSET = 100.0F;
-    const float SENSITIVITY = 0.02F; // Controls how quickly it approaches the limit
-    const float CROSS_AXIS_DAMPING = 0.8F; // Controls how much perpendicular movement is reduced
+    const float SENSITIVITY = 0.005F; // Controls how quickly it approaches the limit
     
-    Vector2D scaledDelta = m_lastDelta * 0.5F;
+    Vector2D scaledDelta = m_lastDelta; // * 0.5F;
     Vector2D asymptotic_offset;
     
-    // Calculate dominant axis and its strength
-    float abs_x = std::abs(scaledDelta.x);
-    float abs_y = std::abs(scaledDelta.y);
-    float total_magnitude = abs_x + abs_y;
+    // Calculate the magnitude of the scaled delta
+    float magnitude = std::sqrt(scaledDelta.x * scaledDelta.x + scaledDelta.y * scaledDelta.y);
     
-    if (total_magnitude > 0.001F) {
-        // Calculate directional dominance (0.5 = equal, 1.0 = completely dominant)
-        float x_dominance = abs_x / total_magnitude;
-        float y_dominance = abs_y / total_magnitude;
+    if (magnitude > 0.001F) {
+        // Apply exponential limiting to the magnitude
+        float limited_magnitude = MAX_OFFSET * (1.0F - std::exp(-SENSITIVITY * magnitude)) / (1.0F - (1.0F - MAX_OFFSET * SENSITIVITY) * std::exp(-SENSITIVITY * magnitude));
         
-        // Calculate cross-axis damping factors using exponential function
-        // More dominant axis = less damping on perpendicular axis
-        float x_cross_damping = std::exp(-CROSS_AXIS_DAMPING * y_dominance * total_magnitude * 0.01F);
-        float y_cross_damping = std::exp(-CROSS_AXIS_DAMPING * x_dominance * total_magnitude * 0.01F);
+        // Calculate the scale factor to maintain direction while limiting magnitude
+        float scale_factor = limited_magnitude / magnitude;
         
-        // Apply asymptotic function to X component with cross-axis damping
-        if (abs_x > 0.001F) {
-            float sign_x = scaledDelta.x > 0 ? 1.0F : -1.0F;
-            asymptotic_offset.x = MAX_OFFSET * (1.0F - std::exp(-SENSITIVITY * abs_x)) * sign_x * x_cross_damping;
-        } else {
-            asymptotic_offset.x = 0.0F;
-        }
-        
-        // Apply asymptotic function to Y component with cross-axis damping
-        if (abs_y > 0.001F) {
-            float sign_y = scaledDelta.y > 0 ? 1.0F : -1.0F;
-            asymptotic_offset.y = MAX_OFFSET * (1.0F - std::exp(-SENSITIVITY * abs_y)) * sign_y * y_cross_damping;
-        } else {
-            asymptotic_offset.y = 0.0F;
-        }
+        // Apply the scale factor proportionally to both axes
+        asymptotic_offset.x = scaledDelta.x * scale_factor;
+        asymptotic_offset.y = scaledDelta.y * scale_factor;
     } else {
         asymptotic_offset.x = 0.0F;
         asymptotic_offset.y = 0.0F;
@@ -71,9 +53,6 @@ void CMoveTrackpadGesture::update(const ITrackpadGesture::STrackpadGestureUpdate
     
     m_window->m_floatingOffset = asymptotic_offset;
     g_pHyprRenderer->damageWindow(m_window.lock());
-}
-
-_pHyprRenderer->damageWindow(m_window.lock());
 }
 
 void CMoveTrackpadGesture::end(const ITrackpadGesture::STrackpadGestureEnd& e) {
