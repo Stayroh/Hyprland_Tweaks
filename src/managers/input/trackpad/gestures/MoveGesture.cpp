@@ -14,24 +14,44 @@ void CMoveTrackpadGesture::begin(const ITrackpadGesture::STrackpadGestureBegin& 
 void CMoveTrackpadGesture::update(const ITrackpadGesture::STrackpadGestureUpdate& e) {
     if (!m_window)
         return;
-
     const auto DELTA = e.swipe ? e.swipe->delta : e.pinch->delta;
-
     if (m_window->m_isFloating) {
         g_pLayoutManager->getCurrentLayout()->moveActiveWindow(DELTA, m_window.lock());
         m_window->m_realSize->warp();
         m_window->m_realPosition->warp();
         return;
     }
-
     // tiled window -> displace, then execute a move dispatcher on end.
-
     g_pHyprRenderer->damageWindow(m_window.lock());
-
     // funny name but works on tiled too lmao
     m_lastDelta += DELTA;
-    m_window->m_floatingOffset = (m_lastDelta * 0.5F).clamp(Vector2D{-100.F, -100.F}, Vector2D{100.F, 100.F});
-
+    
+    // Asymptotic function parameters
+    const float MAX_OFFSET = 100.0F;
+    const float SENSITIVITY = 0.02F; // Controls how quickly it approaches the limit
+    
+    // Calculate asymptotic offset using exponential function
+    // Formula: offset = MAX_OFFSET * (1 - e^(-SENSITIVITY * |delta|)) * sign(delta)
+    Vector2D scaledDelta = m_lastDelta * 0.5F;
+    Vector2D asymptotic_offset;
+    
+    // Apply asymptotic function to X component
+    if (std::abs(scaledDelta.x) > 0.001F) {
+        float sign_x = scaledDelta.x > 0 ? 1.0F : -1.0F;
+        asymptotic_offset.x = MAX_OFFSET * (1.0F - std::exp(-SENSITIVITY * std::abs(scaledDelta.x))) * sign_x;
+    } else {
+        asymptotic_offset.x = 0.0F;
+    }
+    
+    // Apply asymptotic function to Y component
+    if (std::abs(scaledDelta.y) > 0.001F) {
+        float sign_y = scaledDelta.y > 0 ? 1.0F : -1.0F;
+        asymptotic_offset.y = MAX_OFFSET * (1.0F - std::exp(-SENSITIVITY * std::abs(scaledDelta.y))) * sign_y;
+    } else {
+        asymptotic_offset.y = 0.0F;
+    }
+    
+    m_window->m_floatingOffset = asymptotic_offset;
     g_pHyprRenderer->damageWindow(m_window.lock());
 }
 
