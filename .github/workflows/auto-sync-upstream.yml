@@ -1,28 +1,32 @@
-name: Auto-sync with upstream Hyprland
+name: Auto-sync and Build Hyprland
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *'  # daily at midnight UTC
   workflow_dispatch:
 
 jobs:
-  sync-and-build:
+  sync-build-release:
     runs-on: ubuntu-latest
     outputs:
       has_changes: ${{ steps.sync.outputs.has_changes }}
       version: ${{ steps.sync.outputs.version }}
     steps:
+
+      # Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      # Configure Git
       - name: Configure git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
+      # Sync upstream
       - name: Check and sync upstream
         id: sync
         run: |
@@ -47,14 +51,15 @@ jobs:
             fi
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
-          fi
 
+      # Install build dependencies
       - name: Install build dependencies
         if: steps.sync.outputs.has_changes == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build pkg-config
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config fakeroot base-devel git
 
+      # Build Hyprland
       - name: Build Hyprland
         if: steps.sync.outputs.has_changes == 'true'
         run: |
@@ -63,12 +68,24 @@ jobs:
           cmake .. -GNinja || echo "CMake failed, trying make"
           ninja || make || echo "Build completed"
 
-      - name: Create release
+      # Create Arch Linux package
+      - name: Build Arch package
+        if: steps.sync.outputs.has_changes == 'true'
+        run: |
+          mkdir -p pkgbuild
+          cp PKGBUILD pkgbuild/ || { echo "PKGBUILD missing"; exit 1; }
+          cd pkgbuild
+          makepkg -s --noconfirm
+
+      # Create release and attach package
+      - name: Create release with package
         if: steps.sync.outputs.has_changes == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.sync.outputs.version }}
           name: Hyprland Fork v${{ steps.sync.outputs.version }}
           body: Auto-generated release
+          files: pkgbuild/*.pkg.tar.zst
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
