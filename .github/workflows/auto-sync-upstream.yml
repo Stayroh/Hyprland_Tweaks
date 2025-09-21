@@ -28,8 +28,10 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          # Also configure safe directory for the container
-          git config --global --add safe.directory /github/workspace
+          # Fix the ownership issue in container
+          git config --global --add safe.directory '*'
+          # Or specifically add the workspace directory
+          git config --global --add safe.directory /__w/Hyprland_Tweaks/Hyprland_Tweaks
 
       - name: Check and sync upstream
         id: sync
