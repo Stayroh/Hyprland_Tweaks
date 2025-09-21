@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git cmake ninja pkg-config wayland wayland-protocols libxkbcommon pixman glslang vulkan-headers vulkan-validation-layers libdrm mesa
+          pacman -S --noconfirm base-devel git cmake ninja pkg-config wayland wayland-protocols libxkbcommon pixman glslang vulkan-headers vulkan-validation-layers libdrm mesa meson
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,7 +46,6 @@ jobs:
             if git merge upstream/main --no-edit; then
               git push origin main
               NEW_VERSION=$(date +"%Y.%m.%d")-$(echo $UPSTREAM_HASH | cut -c1-8)
-              # Create PKGBUILD-compatible version (replace hyphens with dots)
               PKG_VERSION=$(echo "$NEW_VERSION" | sed 's/-/./g')
               echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
               echo "pkgver=$PKG_VERSION" >> $GITHUB_OUTPUT
@@ -63,7 +62,7 @@ jobs:
       - name: Create PKGBUILD
         if: steps.sync.outputs.has_changes == 'true'
         run: |
-          cat > PKGBUILD << EOF
+          cat > PKGBUILD << 'EOF'
           pkgname=hyprland-fork
           pkgver=${{ steps.sync.outputs.pkgver }}
           pkgrel=1
@@ -71,19 +70,90 @@ jobs:
           arch=('x86_64')
           url="https://github.com/Stayroh/Hyprland_Tweaks"
           license=('BSD')
-          depends=('wayland' 'wayland-protocols' 'libxkbcommon' 'pixman' 'glslang' 'vulkan-validation-layers' 'libdrm' 'mesa')
-          makedepends=('git' 'cmake' 'ninja' 'vulkan-headers')
+          depends=(
+              'libxkbcommon'
+              'libxkbcommon-x11'
+              'pixman'
+              'wayland'
+              'cairo'
+              'pango'
+              'hyprcursor'
+              'hyprlang'
+              'hyprutils'
+              'hyprwayland-scanner'
+              'xcb-proto'
+              'xcb-util'
+              'xcb-util-keysyms'
+              'xcb-util-wm'
+              'xorg-xinput'
+              'libdrm'
+              'libxcomposite'
+              'libxdamage'
+              'libxrender'
+              'libx11'
+              'libxcb'
+              'libxext'
+              'libxfixes'
+              'libxi'
+              'libxrandr'
+              'wayland-protocols'
+              'mesa'
+          )
+          makedepends=(
+              'git'
+              'cmake'
+              'ninja'
+              'gcc'
+              'gdb'
+              'meson'
+              'vulkan-headers'
+              'vulkan-validation-layers'
+              'xorgproto'
+              'glslang'
+              'libliftoff'
+              'libdisplay-info'
+          )
           source=("git+https://github.com/Stayroh/Hyprland_Tweaks.git#commit=${{ github.sha }}")
           sha256sums=('SKIP')
+          provides=('hyprland')
+          conflicts=('hyprland')
+
+          prepare() {
+              cd "$srcdir/Hyprland_Tweaks"
+              
+              # Initialize and update submodules
+              git submodule update --init --recursive
+              
+              # Create udis86 directory if missing
+              if [ ! -d "subprojects/udis86" ]; then
+                  mkdir -p subprojects/udis86
+                  git clone https://github.com/vmt/udis86.git subprojects/udis86 --depth 1
+              fi
+              
+              # Build aquamarine dependency if not available
+              if ! pkg-config --exists aquamarine; then
+                  if [ ! -d "../aquamarine" ]; then
+                      cd "$srcdir"
+                      git clone https://github.com/hyprwm/aquamarine.git --depth 1
+                      cd aquamarine
+                      cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -B build
+                      cmake --build build --config Release
+                      sudo cmake --install build
+                      cd "$srcdir/Hyprland_Tweaks"
+                  fi
+              fi
+          }
 
           build() {
-            cd "\$srcdir/Hyprland_Tweaks"
-            make all
+              cd "$srcdir/Hyprland_Tweaks"
+              
+              # Use make all instead of cmake directly
+              make all
           }
 
           package() {
-            cd "\$srcdir/Hyprland_Tweaks"
-            make install DESTDIR="\$pkgdir"
+              cd "$srcdir/Hyprland_Tweaks"
+              make install DESTDIR="$pkgdir" PREFIX="/usr"
           }
           EOF
 
@@ -92,6 +162,8 @@ jobs:
         run: |
           useradd -m builder
           chown -R builder:builder .
+          # Give builder sudo privileges for installing dependencies during build
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           sudo -u builder makepkg -s --noconfirm
 
       - name: Create release and upload package
