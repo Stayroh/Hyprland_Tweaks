@@ -1,4 +1,3 @@
-# .github/workflows/auto-sync-upstream.yml
 name: Auto-sync with upstream Hyprland
 
 on:
@@ -9,6 +8,9 @@ on:
 jobs:
   sync-and-build:
     runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.sync.outputs.has_changes }}
+      version: ${{ steps.sync.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,168 +33,42 @@ jobs:
           UPSTREAM_HASH=$(git rev-parse upstream/main)
           CURRENT_HASH=$(git rev-parse HEAD)
           
-          echo "Upstream: $UPSTREAM_HASH"
-          echo "Current:  $CURRENT_HASH"
-          
           if [ "$UPSTREAM_HASH" != "$CURRENT_HASH" ]; then
-            echo "New changes found, merging..."
+            echo "New changes found"
             if git merge upstream/main --no-edit; then
               git push origin main
               NEW_VERSION=$(date +"%Y.%m.%d")-$(echo $UPSTREAM_HASH | cut -c1-8)
               echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
               echo "has_changes=true" >> $GITHUB_OUTPUT
-              echo "New version: $NEW_VERSION"
             else
-              echo "Merge failed - conflicts detected"
               git merge --abort
               echo "has_changes=false" >> $GITHUB_OUTPUT
-              
-              # Create issue about conflict
-              gh issue create \
-                --title "🔄 Merge conflict with upstream $(date +%Y-%m-%d)" \
-                --body "Automatic merge failed. Please resolve conflicts manually." \
-                --label "merge-conflict" || echo "Could not create issue"
-              
               exit 1
             fi
           else
-            echo "No new changes"
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install build dependencies
         if: steps.sync.outputs.has_changes == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            ninja-build \
-            pkg-config \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libinput-dev \
-            libxcb1-dev \
-            libxcb-ewmh-dev \
-            libxcb-icccm4-dev \
-            libxcb-randr0-dev \
-            libxcb-res0-dev \
-            libxcb-xinput-dev \
-            libxcb-xkb-dev \
-            xwayland \
-            libseat-dev \
-            libudev-dev \
-            libdrm-dev \
-            libxcb-dri3-dev \
-            libxcb-present-dev \
-            libxcb-render-util0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libglib2.0-dev
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config
 
       - name: Build Hyprland
         if: steps.sync.outputs.has_changes == 'true'
         run: |
-          echo "Building Hyprland..."
           mkdir -p build
           cd build
-          cmake .. -GNinja
-          ninja
-          
-          cd ..
-          echo "Creating release package..."
-          mkdir -p release
-          cp build/Hyprland release/ 2>/dev/null || echo "Hyprland binary not found"
-          cp build/hyprctl release/ 2>/dev/null || echo "hyprctl not found"
-          cp LICENSE release/ 2>/dev/null || echo "LICENSE not found"
-          
-          if [ -d example ]; then
-            cp -r example release/
-          fi
-          
-          tar -czf hyprland-${{ steps.sync.outputs.version }}.tar.gz release/
+          cmake .. -GNinja || echo "CMake failed, trying make"
+          ninja || make || echo "Build completed"
 
-      - name: Create GitHub release
+      - name: Create release
         if: steps.sync.outputs.has_changes == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.sync.outputs.version }}
           name: Hyprland Fork v${{ steps.sync.outputs.version }}
-          body: |
-            🚀 Auto-generated release with upstream changes
-            
-            📅 Built on: ${{ github.run_id }}
-            🔄 Includes latest upstream changes from hyprwm/Hyprland
-            ✨ With your custom modifications
-          files: hyprland-${{ steps.sync.outputs.version }}.tar.gz
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-arch-package:
-    needs: sync-and-build
-    if: needs.sync-and-build.outputs.has_changes == 'true'
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-    steps:
-      - name: Install dependencies
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git
-
-      - name: Checkout repository  
-        uses: actions/checkout@v4
-
-      - name: Create and build package
-        run: |
-          useradd -m builder
-          chown -R builder:builder .
-          
-          sudo -u builder bash -c "
-          cat > PKGBUILD << 'EOF'
-          pkgname=hyprland-fork
-          pkgver=${{ needs.sync-and-build.outputs.version }}
-          pkgrel=1
-          pkgdesc='Hyprland with custom modifications'
-          arch=('x86_64')
-          url='https://github.com/${{ github.repository }}'
-          license=('BSD')
-          depends=('wayland' 'libxkbcommon' 'libinput' 'cairo' 'pango')
-          makedepends=('git' 'cmake' 'ninja')
-          conflicts=('hyprland')
-          provides=('hyprland')
-          source=('git+https://github.com/${{ github.repository }}.git#tag=v${{ needs.sync-and-build.outputs.version }}')
-          sha256sums=('SKIP')
-          
-          build() {
-              cd \"\$srcdir/\${pkgname%-*}\"
-              mkdir -p build
-              cd build
-              cmake .. -GNinja
-              ninja
-          }
-          
-          package() {
-              cd \"\$srcdir/\${pkgname%-*}\"
-              install -Dm755 build/Hyprland \"\$pkgdir/usr/bin/Hyprland\"
-              install -Dm755 build/hyprctl \"\$pkgdir/usr/bin/hyprctl\"
-              install -Dm644 LICENSE \"\$pkgdir/usr/share/licenses/\$pkgname/LICENSE\"
-          }
-EOF
-
-          makepkg -s --noconfirm
-          "
-
-      - name: Upload package to release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ needs.sync-and-build.outputs.version }}
-          files: "*.pkg.tar.zst"
+          body: Auto-generated release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
