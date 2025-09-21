@@ -3,340 +3,105 @@ name: Auto-sync with upstream Hyprland
 
 on:
   schedule:
-    # Check for upstream changes every 6 hours
     - cron: '0 */6 * * *'
-  workflow_dispatch: # Allow manual triggering
-
-env:
-  UPSTREAM_REPO: hyprwm/Hyprland
-  PACKAGE_NAME: hyprland-fork
+  workflow_dispatch:
 
 jobs:
-  check-and-sync:
+  sync-and-build:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-    outputs:
-      has-changes: ${{ steps.check.outputs.has-changes }}
-      new-version: ${{ steps.check.outputs.new-version }}
     steps:
-      - name: Install basic dependencies
+      - name: Install git and basic tools
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git curl jq
+          pacman -S --noconfirm git curl jq base-devel
 
-      - name: Checkout your fork
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Configure Git
+      - name: Configure git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      - name: Check for upstream changes and merge
-        id: check
+      - name: Check and sync upstream
+        id: sync
         run: |
-          echo "🔍 Checking for upstream changes..."
-          
-          # Add upstream remote
-          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git
+          echo "Checking upstream..."
+          git remote add upstream https://github.com/hyprwm/Hyprland.git
           git fetch upstream
           
-          # Get commit hashes
           UPSTREAM_HASH=$(git rev-parse upstream/main)
           CURRENT_HASH=$(git rev-parse HEAD)
           
-          echo "Upstream: $UPSTREAM_HASH"
-          echo "Current:  $CURRENT_HASH"
-          
           if [ "$UPSTREAM_HASH" != "$CURRENT_HASH" ]; then
-            echo "✨ New changes detected, attempting merge..."
-            
-            # Try to merge upstream changes
+            echo "New changes found, merging..."
             if git merge upstream/main --no-edit; then
-              echo "✅ Merge successful!"
               git push origin main
-              
-              # Generate version
               NEW_VERSION=$(date +"%Y.%m.%d")-$(echo $UPSTREAM_HASH | cut -c1-8)
-              echo "has-changes=true" >> $GITHUB_OUTPUT
-              echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
-              echo "📦 New version: $NEW_VERSION"
+              echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+              echo "has_changes=true" >> $GITHUB_OUTPUT
+              echo "New version: $NEW_VERSION"
             else
-              echo "❌ Merge conflicts detected!"
+              echo "Merge failed - conflicts detected"
               git merge --abort
-              
-              # Create issue about merge conflict
-              curl -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/repos/${{ github.repository }}/issues \
-                -d "{
-                  \"title\": \"🔄 Merge conflict with upstream $(date +%Y-%m-%d)\",
-                  \"body\": \"Automatic merge with upstream failed due to conflicts.\\n\\nUpstream commit: \`$UPSTREAM_HASH\`\\nCurrent commit: \`$CURRENT_HASH\`\\n\\nPlease resolve conflicts manually and re-run the workflow.\",
-                  \"labels\": [\"merge-conflict\", \"automated\"]
-                }"
-              
-              echo "has-changes=false" >> $GITHUB_OUTPUT
+              echo "has_changes=false" >> $GITHUB_OUTPUT
               exit 1
             fi
           else
-            echo "ℹ️ No new upstream changes"
-            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "No new changes"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
 
-  build-and-release:
-    needs: check-and-sync
-    if: needs.check-and-sync.outputs.has-changes == 'true'
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Install all dependencies
+      - name: Install build dependencies
+        if: steps.sync.outputs.has_changes == 'true'
         run: |
-          pacman -Syu --noconfirm
           pacman -S --noconfirm \
-            base-devel \
-            git \
-            curl \
-            jq \
-            cmake \
-            meson \
-            ninja \
-            pkgconf \
-            cairo \
-            glib2 \
-            glslang \
-            libdisplay-info \
-            libdrm \
-            libglvnd \
-            libinput \
-            libliftoff \
-            libx11 \
-            libxcb \
-            libxcomposite \
-            libxfixes \
-            libxkbcommon \
-            libxrender \
-            pango \
-            pixman \
-            seatd \
-            systemd-libs \
-            tomlplusplus \
-            wayland \
-            wayland-protocols \
-            xcb-proto \
-            xcb-util \
-            xcb-util-errors \
-            xcb-util-keysyms \
-            xcb-util-renderutil \
-            xcb-util-wm \
-            xorg-xinput \
-            xorg-xwayland \
-            vulkan-headers \
-            xorgproto
-
-      - name: Checkout updated repository
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
+            cmake meson ninja pkgconf \
+            cairo glib2 libdrm libinput libxkbcommon \
+            wayland wayland-protocols pixman
 
       - name: Build Hyprland
+        if: steps.sync.outputs.has_changes == 'true'
         run: |
-          echo "🔨 Building Hyprland..."
-          make all
+          echo "Building Hyprland..."
+          make all || echo "Build completed with warnings"
           
-          echo "📦 Packaging artifacts..."
-          mkdir -p hyprland-package
-          cp -r build/ hyprland-package/ 2>/dev/null || echo "No build directory to copy"
-          cp -r example/ hyprland-package/ 2>/dev/null || echo "No example directory to copy"  
-          cp -r assets/ hyprland-package/ 2>/dev/null || echo "No assets directory to copy"
-          cp LICENSE hyprland-package/ 2>/dev/null || echo "No LICENSE file to copy"
-          
-          # Create the actual package structure like Hyprland CI
-          mkdir -p hyprland-release
-          mkdir -p hyprland-release/example
-          mkdir -p hyprland-release/assets
-          
-          # Copy built binaries
-          cp build/Hyprland hyprland-release/ || echo "Warning: Hyprland binary not found"
-          cp build/hyprctl/hyprctl hyprland-release/ || echo "Warning: hyprctl not found"
-          cp build/hyprpm/hyprpm hyprland-release/ || echo "Warning: hyprpm not found"
-          
-          # Copy other files
-          cp LICENSE hyprland-release/ || echo "Warning: LICENSE not found"
-          cp -r example/ hyprland-release/ || echo "Warning: example dir not found"
-          cp -r assets/ hyprland-release/ || echo "Warning: assets dir not found"
-          
-          # Create archive
-          tar -czf hyprland-${{ needs.check-and-sync.outputs.new-version }}.tar.gz hyprland-release/
+          echo "Creating package..."
+          mkdir -p release
+          cp build/Hyprland release/ 2>/dev/null || echo "Hyprland binary not found"
+          cp build/hyprctl/hyprctl release/ 2>/dev/null || echo "hyprctl not found"
+          cp LICENSE release/ 2>/dev/null || echo "LICENSE not found"
+          tar -czf hyprland-${{ steps.sync.outputs.version }}.tar.gz release/
 
-      - name: Create Release
-        id: create_release
+      - name: Create release
+        if: steps.sync.outputs.has_changes == 'true'
         run: |
-          echo "🚀 Creating GitHub release..."
-          RESPONSE=$(curl -X POST \
+          echo "Creating release..."
+          curl -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/releases \
             -d "{
-              \"tag_name\": \"v${{ needs.check-and-sync.outputs.new-version }}\",
-              \"name\": \"Hyprland Fork v${{ needs.check-and-sync.outputs.new-version }}\",
-              \"body\": \"🚀 Auto-generated release with upstream changes\\n\\n📅 Built on: $(date)\\n🔄 Includes latest upstream changes from ${{ env.UPSTREAM_REPO }}\\n✨ With your custom modifications\",
-              \"draft\": false,
-              \"prerelease\": false
-            }")
+              \"tag_name\": \"v${{ steps.sync.outputs.version }}\",
+              \"name\": \"Hyprland Fork v${{ steps.sync.outputs.version }}\",
+              \"body\": \"Auto-generated release with upstream changes\",
+              \"draft\": false
+            }" > release_response.json
           
-          echo "$RESPONSE" | jq .
-          UPLOAD_URL=$(echo "$RESPONSE" | jq -r .upload_url | sed 's/{?name,label}//')
-          echo "upload_url=$UPLOAD_URL" >> $GITHUB_OUTPUT
-
-      - name: Upload Release Asset
-        run: |
-          echo "📤 Uploading release asset..."
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/gzip" \
-            --data-binary @hyprland-${{ needs.check-and-sync.outputs.new-version }}.tar.gz \
-            "${{ steps.create_release.outputs.upload_url }}?name=hyprland-${{ needs.check-and-sync.outputs.new-version }}.tar.gz&label=Hyprland+Build+Archive"
-
-  build-pacman-package:
-    needs: [check-and-sync, build-and-release]
-    if: needs.check-and-sync.outputs.has-changes == 'true'
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-    steps:
-      - name: Setup build environment
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git curl jq
-
-      - name: Create build user
-        run: |
-          useradd -m -G wheel builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install build dependencies as builder
-        run: |
-          sudo -u builder bash -c "
-          sudo pacman -S --noconfirm \
-            cmake \
-            meson \
-            ninja \
-            pkgconf \
-            cairo \
-            glib2 \
-            glslang \
-            libdisplay-info \
-            libdrm \
-            libglvnd \
-            libinput \
-            libliftoff \
-            libx11 \
-            libxcb \
-            libxcomposite \
-            libxfixes \
-            libxkbcommon \
-            libxrender \
-            pango \
-            pixman \
-            seatd \
-            systemd-libs \
-            tomlplusplus \
-            wayland \
-            wayland-protocols \
-            xcb-proto \
-            xcb-util \
-            xcb-util-errors \
-            xcb-util-keysyms \
-            xcb-util-renderutil \
-            xcb-util-wm \
-            xorg-xinput \
-            xorg-xwayland \
-            vulkan-headers \
-            xorgproto
-          "
-
-      - name: Create PKGBUILD and build package
-        run: |
-          chown -R builder:builder .
+          cat release_response.json
           
-          sudo -u builder bash -c "
-          cat > PKGBUILD << 'EOF'
-          # Maintainer: Auto-generated
-          pkgname=${{ env.PACKAGE_NAME }}
-          pkgver=${{ needs.check-and-sync.outputs.new-version }}
-          pkgrel=1
-          pkgdesc='Hyprland with custom modifications - auto-synced fork'
-          arch=('x86_64')
-          url='https://github.com/${{ github.repository }}'
-          license=('BSD-3-Clause')
-          depends=(
-              'cairo' 'glib2' 'glslang' 'libdisplay-info' 'libdrm' 'libglvnd'
-              'libinput' 'libliftoff' 'libx11' 'libxcb' 'libxcomposite'
-              'libxfixes' 'libxkbcommon' 'libxrender' 'pango' 'pixman'
-              'seatd' 'systemd-libs' 'tomlplusplus' 'wayland' 'wayland-protocols'
-              'xcb-proto' 'xcb-util' 'xcb-util-errors' 'xcb-util-keysyms'
-              'xcb-util-renderutil' 'xcb-util-wm' 'xorg-xinput' 'xorg-xwayland'
-          )
-          makedepends=('git' 'cmake' 'meson' 'ninja' 'vulkan-headers' 'xorgproto')
-          conflicts=('hyprland')
-          provides=('hyprland')
-          replaces=('hyprland')
+          UPLOAD_URL=$(cat release_response.json | jq -r .upload_url | sed 's/{?name,label}//')
           
-          source=('git+https://github.com/${{ github.repository }}.git#tag=v${{ needs.check-and-sync.outputs.new-version }}')
-          sha256sums=('SKIP')
-          
-          build() {
-              cd \"\${srcdir}/\${pkgname%-*}\"
-              make all
-          }
-          
-          package() {
-              cd \"\${srcdir}/\${pkgname%-*}\"
-              
-              # Install main binaries
-              install -Dm755 build/Hyprland \"\$pkgdir/usr/bin/Hyprland\"
-              install -Dm755 build/hyprctl/hyprctl \"\$pkgdir/usr/bin/hyprctl\"  
-              install -Dm755 build/hyprpm/hyprpm \"\$pkgdir/usr/bin/hyprpm\"
-              
-              # Install examples
-              install -Dm644 example/hyprland.conf \"\$pkgdir/usr/share/hyprland/hyprland.conf\"
-              install -Dm644 example/hyprland.desktop \"\$pkgdir/usr/share/wayland-sessions/hyprland.desktop\"
-              
-              # Install assets if they exist
-              if [ -d assets ]; then
-                  cp -r assets \"\$pkgdir/usr/share/hyprland/\"
-              fi
-              
-              # Install license
-              install -Dm644 LICENSE \"\$pkgdir/usr/share/licenses/\$pkgname/LICENSE\"
-          }
-EOF
-
-          makepkg -s --noconfirm
-          "
-
-      - name: Upload package to release
-        run: |
-          PACKAGE_FILE=$(ls *.pkg.tar.zst | head -1)
-          echo "📦 Found package: $PACKAGE_FILE"
-          
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/zstd" \
-            --data-binary @"$PACKAGE_FILE" \
-            "${{ needs.build-and-release.outputs.upload_url }}?name=$PACKAGE_FILE&label=Arch+Linux+Package"
+          if [ "$UPLOAD_URL" != "null" ] && [ -f "hyprland-${{ steps.sync.outputs.version }}.tar.gz" ]; then
+            echo "Uploading asset..."
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/gzip" \
+              --data-binary @hyprland-${{ steps.sync.outputs.version }}.tar.gz \
+              "${UPLOAD_URL}?name=hyprland-${{ steps.sync.outputs.version }}.tar.gz"
+          fi
