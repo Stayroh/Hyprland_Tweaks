@@ -47,38 +47,38 @@ jobs:
         run: |
           cd repo
           cat > index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Hyprland Fork Repository</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        pre { background: #f5f5f5; padding: 15px; border-radius: 5px; }
-        code { background: #e8e8e8; padding: 2px 4px; border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Hyprland Fork Repository</h1>
-        <p>Custom Arch Linux repository for Hyprland with modifications.</p>
-        
-        <h2>Setup</h2>
-        <p>Add to your <code>/etc/pacman.conf</code>:</p>
-        <pre>[hyprland-fork]
-Server = https://${REPO_OWNER}.github.io/${REPO_NAME}/repo/\$arch</pre>
-        
-        <p>Then install:</p>
-        <pre>sudo pacman -Sy hyprland-fork</pre>
-        
-        <h2>Package</h2>
-        <ul>
-            <li><strong>hyprland-fork</strong> - Hyprland with custom modifications</li>
-        </ul>
-    </div>
-</body>
-</html>
-EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Hyprland Fork Repository</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .container { max-width: 800px; margin: 0 auto; }
+                pre { background: #f5f5f5; padding: 15px; border-radius: 5px; }
+                code { background: #e8e8e8; padding: 2px 4px; border-radius: 3px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+                <h1>Hyprland Fork Repository</h1>
+                <p>Custom Arch Linux repository for Hyprland with modifications.</p>
+                
+                <h2>Setup</h2>
+                <p>Add to your <code>/etc/pacman.conf</code>:</p>
+                <pre>[hyprland-fork]
+          Server = https://${REPO_OWNER}.github.io/${REPO_NAME}/repo/\$arch</pre>
+                
+                <p>Then install:</p>
+                <pre>sudo pacman -Sy hyprland-fork</pre>
+                
+                <h2>Package</h2>
+                <ul>
+                    <li><strong>hyprland-fork</strong> - Hyprland with custom modifications</li>
+                </ul>
+            </div>
+          </body>
+          </html>
+          EOF
 
 
       - name: Deploy to GitHub Pages
