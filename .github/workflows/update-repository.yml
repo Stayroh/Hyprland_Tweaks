@@ -1,5 +1,4 @@
 name: Update Repository
-
 on:
   release:
     types: [published]
@@ -28,15 +27,25 @@ jobs:
           RELEASE_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/releases/latest)
           
+          echo "Release info: $RELEASE_INFO"
+          
           # Find package file
           PACKAGE_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".pkg.tar.zst")) | .browser_download_url')
           PACKAGE_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".pkg.tar.zst")) | .name')
           
-          if [ "$PACKAGE_URL" != "null" ]; then
+          echo "Package URL: $PACKAGE_URL"
+          echo "Package Name: $PACKAGE_NAME"
+          
+          if [ "$PACKAGE_URL" != "null" ] && [ -n "$PACKAGE_NAME" ]; then
             echo "Downloading: $PACKAGE_NAME"
             curl -L -o "$PACKAGE_NAME" "$PACKAGE_URL"
+            
+            # Create repository database
+            repo-add hyprland-fork.db.tar.xz *.pkg.tar.zst
           else
             echo "No package found in release"
+            echo "Available assets:"
+            echo "$RELEASE_INFO" | jq -r '.assets[].name'
             exit 1
           fi
 
@@ -50,36 +59,29 @@ jobs:
           <!DOCTYPE html>
           <html>
           <head>
-            <title>Hyprland Fork Repository</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                .container { max-width: 800px; margin: 0 auto; }
-                pre { background: #f5f5f5; padding: 15px; border-radius: 5px; }
-                code { background: #e8e8e8; padding: 2px 4px; border-radius: 3px; }
-            </style>
+              <title>Hyprland Fork Repository</title>
           </head>
           <body>
-            <div class="container">
-                <h1>Hyprland Fork Repository</h1>
-                <p>Custom Arch Linux repository for Hyprland with modifications.</p>
-                
-                <h2>Setup</h2>
-                <p>Add to your <code>/etc/pacman.conf</code>:</p>
-                <pre>[hyprland-fork]
-          Server = https://${REPO_OWNER}.github.io/${REPO_NAME}/repo/\$arch</pre>
-                
-                <p>Then install:</p>
-                <pre>sudo pacman -Sy hyprland-fork</pre>
-                
-                <h2>Package</h2>
-                <ul>
-                    <li><strong>hyprland-fork</strong> - Hyprland with custom modifications</li>
-                </ul>
-            </div>
+              <h1>Hyprland Fork Repository</h1>
+              <p>Custom Arch Linux repository for Hyprland with modifications.</p>
+              
+              <h2>Setup</h2>
+              <p>Add to your /etc/pacman.conf:</p>
+              <pre>
+          [hyprland-fork]
+          Server = https://${REPO_OWNER}.github.io/${REPO_NAME}/repo/$arch
+              </pre>
+              
+              <p>Then install:</p>
+              <pre>sudo pacman -Sy hyprland-fork</pre>
+              
+              <h2>Package</h2>
+              <ul>
+                  <li>hyprland-fork - Hyprland with custom modifications</li>
+              </ul>
           </body>
           </html>
           EOF
-
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
