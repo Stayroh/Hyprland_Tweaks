@@ -45,8 +45,8 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
         run: |
-    cd repo
-    cat > index.html << 'EOF'
+          cd repo
+          cat > index.html << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
