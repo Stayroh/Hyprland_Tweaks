@@ -17,7 +17,13 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git cmake ninja pkg-config wayland wayland-protocols libxkbcommon pixman glslang vulkan-headers vulkan-validation-layers libdrm mesa meson
+          pacman -S --noconfirm base-devel git cmake ninja pkg-config meson \
+              wayland wayland-protocols libxkbcommon pixman glslang \
+              vulkan-headers vulkan-validation-layers libdrm mesa \
+              cairo pango gdb gcc xorgproto libliftoff libdisplay-info \
+              libxcomposite libxdamage libxrender libx11 libxcb libxext \
+              libxfixes libxi libxrandr xcb-proto xcb-util xcb-util-keysyms xcb-util-wm \
+              libseat libinput
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -98,6 +104,8 @@ jobs:
               'libxrandr'
               'wayland-protocols'
               'mesa'
+              'libseat'
+              'libinput'
           )
           makedepends=(
               'git'
@@ -124,13 +132,7 @@ jobs:
               # Initialize and update submodules
               git submodule update --init --recursive
               
-              # Create udis86 directory if missing
-              if [ ! -d "subprojects/udis86" ]; then
-                  mkdir -p subprojects/udis86
-                  git clone https://github.com/vmt/udis86.git subprojects/udis86 --depth 1
-              fi
-              
-              # Build aquamarine dependency if not available
+              # Build aquamarine dependency
               if ! pkg-config --exists aquamarine; then
                   if [ ! -d "../aquamarine" ]; then
                       cd "$srcdir"
@@ -146,8 +148,6 @@ jobs:
 
           build() {
               cd "$srcdir/Hyprland_Tweaks"
-              
-              # Use make all instead of cmake directly
               make all
           }
 
@@ -162,7 +162,6 @@ jobs:
         run: |
           useradd -m builder
           chown -R builder:builder .
-          # Give builder sudo privileges for installing dependencies during build
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           sudo -u builder makepkg -s --noconfirm
 
