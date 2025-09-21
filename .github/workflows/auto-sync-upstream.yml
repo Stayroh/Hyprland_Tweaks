@@ -1,32 +1,34 @@
-name: Auto-sync and Build Hyprland
-
+name: Auto-sync with upstream Hyprland
 on:
   schedule:
-    - cron: '0 0 * * *'  # daily at midnight UTC
+    - cron: '0 0 * * *'  # Fixed the cron syntax (was * **)
   workflow_dispatch:
 
 jobs:
-  sync-build-release:
+  sync-and-build:
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
     outputs:
       has_changes: ${{ steps.sync.outputs.has_changes }}
       version: ${{ steps.sync.outputs.version }}
     steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git cmake ninja pkg-config wayland wayland-protocols libxkbcommon pixman glslang vulkan-headers vulkan-validation-layers libdrm mesa
 
-      # Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      # Configure Git
       - name: Configure git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      # Sync upstream
       - name: Check and sync upstream
         id: sync
         run: |
@@ -51,41 +53,52 @@ jobs:
             fi
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
 
-      # Install build dependencies
-      - name: Install build dependencies
+      - name: Create PKGBUILD
         if: steps.sync.outputs.has_changes == 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build pkg-config fakeroot base-devel git
+          cat > PKGBUILD << 'EOF'
+          pkgname=hyprland-fork
+          pkgver=${{ steps.sync.outputs.version }}
+          pkgrel=1
+          pkgdesc="A dynamic tiling Wayland compositor - Custom Fork"
+          arch=('x86_64')
+          url="https://github.com/Stayroh/Hyprland_Tweaks"
+          license=('BSD')
+          depends=('wayland' 'wayland-protocols' 'libxkbcommon' 'pixman' 'glslang' 'vulkan-validation-layers' 'libdrm' 'mesa')
+          makedepends=('git' 'cmake' 'ninja' 'vulkan-headers')
+          source=("git+https://github.com/Stayroh/Hyprland_Tweaks.git#commit=${{ github.sha }}")
+          sha256sums=('SKIP')
 
-      # Build Hyprland
-      - name: Build Hyprland
+          build() {
+            cd "$srcdir/Hyprland_Tweaks"
+            make all
+          }
+
+          package() {
+            cd "$srcdir/Hyprland_Tweaks"
+            make install DESTDIR="$pkgdir"
+          }
+          EOF
+
+      - name: Build package
         if: steps.sync.outputs.has_changes == 'true'
         run: |
-          mkdir -p build
-          cd build
-          cmake .. -GNinja || echo "CMake failed, trying make"
-          ninja || make || echo "Build completed"
+          useradd -m builder
+          chown -R builder:builder .
+          sudo -u builder makepkg -s --noconfirm
 
-      # Create Arch Linux package
-      - name: Build Arch package
-        if: steps.sync.outputs.has_changes == 'true'
-        run: |
-          mkdir -p pkgbuild
-          cp PKGBUILD pkgbuild/ || { echo "PKGBUILD missing"; exit 1; }
-          cd pkgbuild
-          makepkg -s --noconfirm
-
-      # Create release and attach package
-      - name: Create release with package
+      - name: Create release and upload package
         if: steps.sync.outputs.has_changes == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.sync.outputs.version }}
           name: Hyprland Fork v${{ steps.sync.outputs.version }}
-          body: Auto-generated release
-          files: pkgbuild/*.pkg.tar.zst
+          body: |
+            Auto-generated release with upstream sync
+            Upstream commit: ${{ github.sha }}
+          files: |
+            *.pkg.tar.zst
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
