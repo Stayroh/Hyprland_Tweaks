@@ -1,0 +1,327 @@
+# .github/workflows/auto-sync-upstream.yml
+name: Auto-sync with upstream and build
+
+on:
+  schedule:
+    # Check for upstream changes every hour
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      has-changes: ${{ steps.check.outputs.has-changes }}
+      new-version: ${{ steps.check.outputs.new-version }}
+    steps:
+      - name: Checkout your fork
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/hyprwm/Hyprland.git
+          git fetch upstream
+
+      - name: Check for new commits
+        id: check
+        run: |
+          # Get the latest commit hash from upstream main
+          UPSTREAM_HASH=$(git rev-parse upstream/main)
+          CURRENT_HASH=$(git rev-parse origin/main)
+          
+          if [ "$UPSTREAM_HASH" != "$CURRENT_HASH" ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            # Generate version based on date and short hash
+            NEW_VERSION=$(date +"%Y.%m.%d")-$(echo $UPSTREAM_HASH | cut -c1-8)
+            echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "New upstream changes detected"
+          else
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "No new upstream changes"
+          fi
+
+  sync-and-build:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout your fork (full checkout after merge)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Add upstream and merge
+        run: |
+          git remote add upstream https://github.com/hyprwm/Hyprland.git
+          git fetch upstream
+          
+          # Try to merge upstream changes
+          if git merge upstream/main --no-edit; then
+            echo "Merge successful"
+            git push origin main
+          else
+            echo "Merge conflicts detected. Manual intervention required."
+            # Create an issue to notify about merge conflicts
+            gh issue create \
+              --title "Merge conflict with upstream $(date +%Y-%m-%d)" \
+              --body "Automatic merge with upstream failed due to conflicts. Please resolve manually." \
+              --label "merge-conflict"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Arch Linux base and dependencies
+        run: |
+          # Update system and install base development tools
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git
+          
+          # Install Hyprland build dependencies
+          pacman -S --noconfirm \
+            cairo \
+            glib2 \
+            glslang \
+            libdisplay-info \
+            libdrm \
+            libglvnd \
+            libinput \
+            libliftoff \
+            libx11 \
+            libxcb \
+            libxcomposite \
+            libxfixes \
+            libxkbcommon \
+            libxrender \
+            pango \
+            pixman \
+            seatd \
+            systemd-libs \
+            tomlplusplus \
+            wayland \
+            wayland-protocols \
+            xcb-proto \
+            xcb-util \
+            xcb-util-errors \
+            xcb-util-keysyms \
+            xcb-util-renderutil \
+            xcb-util-wm \
+            xorg-xinput \
+            xorg-xwayland \
+            cmake \
+            meson \
+            ninja \
+            vulkan-headers \
+            xorgproto
+
+      - name: Build Hyprland
+        run: |
+          CFLAGS=-Werror CXXFLAGS=-Werror make all
+
+      - name: Package artifacts
+        run: |
+          mkdir hyprland
+          mkdir hyprland/example
+          mkdir hyprland/assets
+          cp ./LICENSE hyprland/
+          cp build/Hyprland hyprland/
+          cp build/hyprctl/hyprctl hyprland/
+          cp build/hyprpm/hyprpm hyprland/
+          cp -r example/ hyprland/
+          cp -r assets/ hyprland/
+          tar -cvJf Hyprland.tar.xz hyprland
+
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.check-upstream.outputs.new-version }}
+          release_name: Hyprland Fork v${{ needs.check-upstream.outputs.new-version }}
+          body: |
+            Auto-generated release with upstream changes merged on $(date +"%Y-%m-%d %H:%M:%S UTC")
+            
+            Changes:
+            - Merged latest upstream changes from Hyprland
+            - Includes your custom modifications
+          draft: false
+          prerelease: false
+
+      - name: Upload tarball to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./Hyprland.tar.xz
+          asset_name: Hyprland-${{ needs.check-upstream.outputs.new-version }}.tar.xz
+          asset_content_type: application/x-xz
+
+  build-pacman-package:
+    needs: [check-upstream, sync-and-build]
+    if: needs.check-upstream.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install base dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git
+
+      - name: Checkout repository for packaging
+        uses: actions/checkout@v4
+
+      - name: Setup build environment for packaging
+        run: |
+          # Update system and install base development tools
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git
+          
+          # Install Hyprland build dependencies
+          pacman -S --noconfirm \
+            cairo \
+            glib2 \
+            glslang \
+            libdisplay-info \
+            libdrm \
+            libglvnd \
+            libinput \
+            libliftoff \
+            libx11 \
+            libxcb \
+            libxcomposite \
+            libxfixes \
+            libxkbcommon \
+            libxrender \
+            pango \
+            pixman \
+            seatd \
+            systemd-libs \
+            tomlplusplus \
+            wayland \
+            wayland-protocols \
+            xcb-proto \
+            xcb-util \
+            xcb-util-errors \
+            xcb-util-keysyms \
+            xcb-util-renderutil \
+            xcb-util-wm \
+            xorg-xinput \
+            xorg-xwayland \
+            cmake \
+            meson \
+            ninja \
+            vulkan-headers \
+            xorgproto
+
+      - name: Create PKGBUILD
+        run: |
+          cat > PKGBUILD << 'EOF'
+          # Maintainer: Your Name <your.email@example.com>
+          pkgname=hyprland-fork
+          pkgver=${{ needs.check-upstream.outputs.new-version }}
+          pkgrel=1
+          pkgdesc="Hyprland with custom modifications"
+          arch=('x86_64')
+          url="https://github.com/${{ github.repository }}"
+          license=('BSD-3-Clause')
+          depends=(
+              'cairo'
+              'glib2' 'glibc' 'glslang'
+              'libdisplay-info'
+              'libdrm'
+              'libglvnd'
+              'libinput'
+              'libliftoff'
+              'libx11'
+              'libxcb'
+              'libxcomposite'
+              'libxfixes'
+              'libxkbcommon'
+              'libxrender'
+              'opengl-driver'
+              'pango'
+              'pixman'
+              'seatd'
+              'systemd-libs'
+              'tomlplusplus'
+              'wayland'
+              'wayland-protocols'
+              'xcb-proto'
+              'xcb-util'
+              'xcb-util-errors'
+              'xcb-util-keysyms'
+              'xcb-util-renderutil'
+              'xcb-util-wm'
+              'xorg-xinput'
+              'xorg-xwayland'
+          )
+          makedepends=(
+              'cmake'
+              'gdb'
+              'meson'
+              'ninja'
+              'vulkan-headers'
+              'wayland-protocols'
+              'xorgproto'
+          )
+          conflicts=('hyprland')
+          provides=('hyprland')
+          source=("git+https://github.com/${{ github.repository }}.git#tag=v${{ needs.check-upstream.outputs.new-version }}")
+          sha256sums=('SKIP')
+
+          build() {
+            cd "$srcdir/$(basename ${{ github.repository }})"
+            CFLAGS=-Werror CXXFLAGS=-Werror make all
+          }
+
+          package() {
+            cd "$srcdir/$(basename ${{ github.repository }})"
+            
+            # Install binaries
+            install -Dm755 build/Hyprland "$pkgdir/usr/bin/Hyprland"
+            install -Dm755 build/hyprctl/hyprctl "$pkgdir/usr/bin/hyprctl"
+            install -Dm755 build/hyprpm/hyprpm "$pkgdir/usr/bin/hyprpm"
+            
+            # Install examples
+            install -Dm644 example/hyprland.conf "$pkgdir/usr/share/hyprland/hyprland.conf"
+            install -Dm644 example/hyprland.desktop "$pkgdir/usr/share/wayland-sessions/hyprland.desktop"
+            
+            # Install assets
+            cp -r assets "$pkgdir/usr/share/hyprland/"
+            
+            # Install license
+            install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+          }
+          EOF
+
+      - name: Build package
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+          sudo -u builder makepkg -s --noconfirm
+
+      - name: Upload package to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.sync-and-build.outputs.upload_url }}
+          asset_path: ./*.pkg.tar.zst
+          asset_name: hyprland-fork-${{ needs.check-upstream.outputs.new-version }}-1-x86_64.pkg.tar.zst
+          asset_content_type: application/zstd
