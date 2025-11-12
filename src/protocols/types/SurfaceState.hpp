@@ -7,6 +7,7 @@
 class CTexture;
 class CDRMSyncPointState;
 class CWLCallbackResource;
+<<<<<<< HEAD
 
 enum eLockReason : uint8_t {
     LOCK_REASON_NONE  = 0,
@@ -32,6 +33,8 @@ inline eLockReason& operator&=(eLockReason& a, eLockReason b) {
 inline eLockReason operator~(eLockReason a) {
     return sc<eLockReason>(~sc<uint8_t>(a));
 }
+=======
+>>>>>>> ddca5c99 (probably doing something stupid)
 
 struct SSurfaceState {
     union {

@@ -481,6 +481,7 @@ void CMonitor::applyCMType(NCMType::eCMType cmType, int cmSdrEotf) {
                                   .primariesNamed   = NColorManagement::CM_PRIMARIES_BT2020,
                                   .primaries        = NColorManagement::getPrimaries(NColorManagement::CM_PRIMARIES_BT2020)};
             break;
+<<<<<<< HEAD
         case NCMType::CM_DCIP3:
             m_imageDescription = {.transferFunction = chosenSdrEotf,
                                   .primariesNameSet = true,
@@ -502,6 +503,25 @@ void CMonitor::applyCMType(NCMType::eCMType cmType, int cmSdrEotf) {
         case NCMType::CM_EDID:
             m_imageDescription = {.transferFunction = chosenSdrEotf,
                                   .primariesNameSet = true,
+=======
+        case CM_DCIP3:
+            m_imageDescription = {.primariesNameSet = true,
+                                  .primariesNamed   = NColorManagement::CM_PRIMARIES_DCI_P3,
+                                  .primaries        = NColorManagement::getPrimaries(NColorManagement::CM_PRIMARIES_DCI_P3)};
+            break;
+        case CM_DP3:
+            m_imageDescription = {.primariesNameSet = true,
+                                  .primariesNamed   = NColorManagement::CM_PRIMARIES_DISPLAY_P3,
+                                  .primaries        = NColorManagement::getPrimaries(NColorManagement::CM_PRIMARIES_DISPLAY_P3)};
+            break;
+        case CM_ADOBE:
+            m_imageDescription = {.primariesNameSet = true,
+                                  .primariesNamed   = NColorManagement::CM_PRIMARIES_ADOBE_RGB,
+                                  .primaries        = NColorManagement::getPrimaries(NColorManagement::CM_PRIMARIES_ADOBE_RGB)};
+            break;
+        case CM_EDID:
+            m_imageDescription = {.primariesNameSet = false,
+>>>>>>> ddca5c99 (probably doing something stupid)
                                   .primariesNamed   = NColorManagement::CM_PRIMARIES_BT2020,
                                   .primaries        = {
                                              .red   = {.x = m_output->parsedEDID.chromaticityCoords->red.x, .y = m_output->parsedEDID.chromaticityCoords->red.y},

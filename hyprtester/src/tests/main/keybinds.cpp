@@ -34,6 +34,7 @@ static bool checkFlag() {
     return exists;
 }
 
+<<<<<<< HEAD
 static bool attemptCheckFlag(int attempts, int intervalMs) {
     for (int i = 0; i < attempts; i++) {
         if (checkFlag())
@@ -45,6 +46,8 @@ static bool attemptCheckFlag(int attempts, int intervalMs) {
     return false;
 }
 
+=======
+>>>>>>> ddca5c99 (probably doing something stupid)
 static std::string readKittyOutput() {
     std::string output = Tests::execAndGet("kitten @ --to unix:/tmp/hyprtester-kitty.sock get-text --extent all");
     // chop off shell prompt
@@ -295,8 +298,12 @@ static void testShortcutBindKey() {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     const std::string output = readKittyOutput();
     EXPECT_COUNT_STRING(output, "y", 0);
+<<<<<<< HEAD
     // disabled: doesn't work in CI
     // EXPECT_COUNT_STRING(output, "q", 1);
+=======
+    EXPECT_COUNT_STRING(output, "q", 1);
+>>>>>>> ddca5c99 (probably doing something stupid)
     EXPECT(getFromSocket("/keyword unbind ,Y"), "ok");
     Tests::killAllWindows();
 }
@@ -454,6 +461,7 @@ static void testSubmap() {
     Tests::killAllWindows();
 }
 
+<<<<<<< HEAD
 static void testSubmapUniversal() {
     NLog::log("{}Testing submap universal", Colors::GREEN);
 
@@ -482,6 +490,8 @@ static void testSubmapUniversal() {
     EXPECT(getFromSocket("/keyword unbind SUPER,Y"), "ok");
 }
 
+=======
+>>>>>>> ddca5c99 (probably doing something stupid)
 static bool test() {
     NLog::log("{}Testing keybinds", Colors::GREEN);
 
@@ -501,8 +511,13 @@ static bool test() {
     testShortcutLongPressKeyRelease();
     testShortcutRepeat();
     testShortcutRepeatKeyRelease();
+<<<<<<< HEAD
     testSubmap();
     testSubmapUniversal();
+=======
+
+    testSubmap();
+>>>>>>> ddca5c99 (probably doing something stupid)
 
     clearFlag();
     return !ret;

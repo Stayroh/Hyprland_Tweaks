@@ -91,12 +91,10 @@ CWLSurfaceResource::CWLSurfaceResource(SP<CWlSurface> resource_) : m_resource(re
 
         if (buf && buf->m_buffer) {
             m_pending.buffer     = CHLBufferReference(buf->m_buffer.lock());
-            m_pending.texture    = buf->m_buffer->m_texture;
             m_pending.size       = buf->m_buffer->size;
             m_pending.bufferSize = buf->m_buffer->size;
         } else {
-            m_pending.buffer = {};
-            m_pending.texture.reset();
+            m_pending.buffer     = {};
             m_pending.size       = Vector2D{};
             m_pending.bufferSize = Vector2D{};
         }
@@ -136,7 +134,15 @@ CWLSurfaceResource::CWLSurfaceResource(SP<CWlSurface> resource_) : m_resource(re
             commitState(m_pending);
 
             // remove any pending states.
+<<<<<<< HEAD
             m_stateQueue.clear();
+=======
+            while (!m_pendingStates.empty()) {
+                m_pendingStates.pop();
+            }
+
+            m_pendingWaiting = false;
+>>>>>>> ddca5c99 (probably doing something stupid)
             m_pending.reset();
             return;
         }
@@ -145,6 +151,7 @@ CWLSurfaceResource::CWLSurfaceResource(SP<CWlSurface> resource_) : m_resource(re
         auto state = m_stateQueue.enqueue(makeUnique<SSurfaceState>(m_pending));
         m_pending.reset();
 
+<<<<<<< HEAD
         // fifo and fences first
         m_events.stateCommit.emit(state);
 
@@ -152,6 +159,11 @@ CWLSurfaceResource::CWLSurfaceResource(SP<CWlSurface> resource_) : m_resource(re
             state->buffer->m_syncFd = dc<CDMABuffer*>(state->buffer.m_buffer.get())->exportSyncFile();
             if (state->buffer->m_syncFd.isValid())
                 m_stateQueue.lock(state, LOCK_REASON_FENCE);
+=======
+        if (!m_pendingWaiting) {
+            m_pendingWaiting = true;
+            scheduleState(state);
+>>>>>>> ddca5c99 (probably doing something stupid)
         }
 
         // now for timer.
@@ -491,15 +503,37 @@ CBox CWLSurfaceResource::extends() {
 }
 
 void CWLSurfaceResource::scheduleState(WP<SSurfaceState> state) {
+<<<<<<< HEAD
     auto whenReadable = [this, surf = m_self](auto state, auto reason) {
         if (!surf || !state)
             return;
 
         m_stateQueue.unlock(state, reason);
+=======
+    auto whenReadable = [this, surf = m_self, state] {
+        if (!surf || state.expired() || m_pendingStates.empty())
+            return;
+
+        while (!m_pendingStates.empty() && m_pendingStates.front() != state) {
+            commitState(*m_pendingStates.front());
+            m_pendingStates.pop();
+        }
+
+        commitState(*m_pendingStates.front());
+        m_pendingStates.pop();
+
+        // If more states are queued, schedule next state
+        if (!m_pendingStates.empty()) {
+            scheduleState(m_pendingStates.front());
+        } else {
+            m_pendingWaiting = false;
+        }
+>>>>>>> ddca5c99 (probably doing something stupid)
     };
 
     if (state->updated.bits.acquire) {
         // wait on acquire point for this surface, from explicit sync protocol
+<<<<<<< HEAD
         state->acquire.addWaiter([state, whenReadable]() { whenReadable(state, LOCK_REASON_FENCE); });
     } else if (state->buffer && state->buffer->isSynchronous()) {
         // synchronous (shm) buffers can be read immediately
@@ -510,6 +544,23 @@ void CWLSurfaceResource::scheduleState(WP<SSurfaceState> state) {
     } else {
         // state commit without a buffer.
         m_stateQueue.unlock(state);
+=======
+        state->acquire.addWaiter(std::move(whenReadable));
+    } else if (state->buffer && state->buffer->isSynchronous()) {
+        // synchronous (shm) buffers can be read immediately
+        whenReadable();
+    } else if (state->buffer && state->buffer->type() == Aquamarine::BUFFER_TYPE_DMABUF && state->buffer->dmabuf().success) {
+        // async buffer and is dmabuf, then we can wait on implicit fences
+        auto syncFd = dc<CDMABuffer*>(state->buffer.m_buffer.get())->exportSyncFile();
+
+        if (syncFd.isValid())
+            g_pEventLoopManager->doOnReadable(std::move(syncFd), std::move(whenReadable));
+        else
+            whenReadable();
+    } else {
+        // state commit without a buffer.
+        whenReadable();
+>>>>>>> ddca5c99 (probably doing something stupid)
     }
 }
 
@@ -520,6 +571,8 @@ void CWLSurfaceResource::commitState(SSurfaceState& state) {
     if (m_current.buffer) {
         if (m_current.buffer->isSynchronous())
             m_current.updateSynchronousTexture(lastTexture);
+        else if (!m_current.buffer->isSynchronous() && state.updated.bits.buffer) // only get a new texture when a new buffer arrived
+            m_current.texture = m_current.buffer->createTexture();
 
         // if the surface is a cursor, update the shm buffer
         // TODO: don't update the entire texture

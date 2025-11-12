@@ -62,7 +62,10 @@ void SSurfaceState::reset() {
     bufferDamage.clear();
 
     callbacks.clear();
+<<<<<<< HEAD
     lockMask = LOCK_REASON_NONE;
+=======
+>>>>>>> ddca5c99 (probably doing something stupid)
 }
 
 void SSurfaceState::updateFrom(SSurfaceState& ref, bool merge) {
@@ -72,8 +75,10 @@ void SSurfaceState::updateFrom(SSurfaceState& ref, bool merge) {
         updated = ref.updated;
 
     if (ref.updated.bits.buffer) {
+        if (!ref.buffer.m_buffer)
+            texture.reset(); // null buffer reset texture.
+
         buffer     = ref.buffer;
-        texture    = ref.texture;
         size       = ref.size;
         bufferSize = ref.bufferSize;
     }
@@ -81,6 +86,10 @@ void SSurfaceState::updateFrom(SSurfaceState& ref, bool merge) {
     if (ref.updated.bits.damage) {
         damage       = ref.damage;
         bufferDamage = ref.bufferDamage;
+    } else {
+        // damage is always relative to the current commit
+        damage.clear();
+        bufferDamage.clear();
     }
 
     if (ref.updated.bits.input)

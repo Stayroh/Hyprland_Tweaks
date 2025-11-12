@@ -15,13 +15,18 @@ class CDMABuffer : public IHLBuffer {
     virtual Aquamarine::SDMABUFAttrs               dmabuf();
     virtual std::tuple<uint8_t*, uint32_t, size_t> beginDataPtr(uint32_t flags);
     virtual void                                   endDataPtr();
+    virtual SP<CTexture>                           createTexture();
     bool                                           good();
     void                                           closeFDs();
     Hyprutils::OS::CFileDescriptor                 exportSyncFile();
+<<<<<<< HEAD
     bool                                           m_success = false;
+=======
+>>>>>>> ddca5c99 (probably doing something stupid)
 
   private:
     Aquamarine::SDMABUFAttrs m_attrs;
+    SP<CTexture>             m_texture;
 
     struct {
         CHyprSignalListener resourceDestroy;

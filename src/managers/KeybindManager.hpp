@@ -26,6 +26,7 @@ struct SSubmap {
 };
 
 struct SKeybind {
+<<<<<<< HEAD
     std::string            key             = "";
     std::set<xkb_keysym_t> sMkKeys         = {};
     uint32_t               keycode         = 0;
@@ -50,6 +51,31 @@ struct SKeybind {
     bool                   click           = false;
     bool                   drag            = false;
     bool                   submapUniversal = false;
+=======
+    std::string            key            = "";
+    std::set<xkb_keysym_t> sMkKeys        = {};
+    uint32_t               keycode        = 0;
+    bool                   catchAll       = false;
+    uint32_t               modmask        = 0;
+    std::set<xkb_keysym_t> sMkMods        = {};
+    std::string            handler        = "";
+    std::string            arg            = "";
+    bool                   locked         = false;
+    SSubmap                submap         = {};
+    std::string            description    = "";
+    bool                   release        = false;
+    bool                   repeat         = false;
+    bool                   longPress      = false;
+    bool                   mouse          = false;
+    bool                   nonConsuming   = false;
+    bool                   transparent    = false;
+    bool                   ignoreMods     = false;
+    bool                   multiKey       = false;
+    bool                   hasDescription = false;
+    bool                   dontInhibit    = false;
+    bool                   click          = false;
+    bool                   drag           = false;
+>>>>>>> ddca5c99 (probably doing something stupid)
 
     // DO NOT INITIALIZE
     bool shadowed = false;

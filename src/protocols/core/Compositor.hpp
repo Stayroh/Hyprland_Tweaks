@@ -106,7 +106,12 @@ class CWLSurfaceResource {
 
     SSurfaceState                          m_current;
     SSurfaceState                          m_pending;
+<<<<<<< HEAD
     CSurfaceStateQueue                     m_stateQueue;
+=======
+    std::queue<UP<SSurfaceState>>          m_pendingStates;
+    bool                                   m_pendingWaiting = false;
+>>>>>>> ddca5c99 (probably doing something stupid)
 
     WP<CWLSurfaceResource>                 m_self;
     WP<CWLSurface>                         m_hlSurface;

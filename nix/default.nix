@@ -94,8 +94,12 @@ in
             (fs.fileFilter (file: file.hasExt "conf" || file.hasExt "desktop") ../example)
             (fs.fileFilter (file: file.hasExt "sh") ../scripts)
             (fs.fileFilter (file: file.name == "CMakeLists.txt") ../.)
+<<<<<<< HEAD
             (optional withHyprtester ../hyprtester)
           ]));
+=======
+          ]);
+>>>>>>> ddca5c99 (probably doing something stupid)
       };
 
       postPatch = ''
@@ -187,6 +191,7 @@ in
         "NO_UWSM" = true;
         "NO_HYPRPM" = true;
         "TRACY_ENABLE" = false;
+<<<<<<< HEAD
         "BUILD_HYPRTESTER" = withHyprtester;
       };
 
@@ -195,6 +200,9 @@ in
           "\''${CMAKE_CURRENT_BINARY_DIR}" \
           "${placeholder "out"}/bin"
       '';
+=======
+      };
+>>>>>>> ddca5c99 (probably doing something stupid)
 
       postInstall = ''
         ${optionalString wrapRuntimeDeps ''

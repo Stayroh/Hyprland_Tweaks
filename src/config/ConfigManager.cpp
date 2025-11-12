@@ -781,8 +781,12 @@ CConfigManager::CConfigManager() {
     registerConfigVar("render:send_content_type", Hyprlang::INT{1});
     registerConfigVar("render:cm_auto_hdr", Hyprlang::INT{1});
     registerConfigVar("render:new_render_scheduling", Hyprlang::INT{0});
+<<<<<<< HEAD
     registerConfigVar("render:non_shader_cm", Hyprlang::INT{3});
     registerConfigVar("render:cm_sdr_eotf", Hyprlang::INT{0});
+=======
+    registerConfigVar("render:non_shader_cm", Hyprlang::INT{2});
+>>>>>>> ddca5c99 (probably doing something stupid)
 
     registerConfigVar("ecosystem:no_update_news", Hyprlang::INT{0});
     registerConfigVar("ecosystem:no_donation_nag", Hyprlang::INT{0});
@@ -2279,8 +2283,30 @@ bool CMonitorRuleParser::parseBitdepth(const std::string& value) {
 }
 
 bool CMonitorRuleParser::parseCM(const std::string& value) {
+<<<<<<< HEAD
     auto parsedCM = NCMType::fromString(value);
     if (!parsedCM.has_value()) {
+=======
+    if (value == "auto")
+        m_rule.cmType = CM_AUTO;
+    else if (value == "srgb")
+        m_rule.cmType = CM_SRGB;
+    else if (value == "wide")
+        m_rule.cmType = CM_WIDE;
+    else if (value == "edid")
+        m_rule.cmType = CM_EDID;
+    else if (value == "hdr")
+        m_rule.cmType = CM_HDR;
+    else if (value == "hdredid")
+        m_rule.cmType = CM_HDR_EDID;
+    else if (value == "dcip3")
+        m_rule.cmType = CM_DCIP3;
+    else if (value == "dp3")
+        m_rule.cmType = CM_DP3;
+    else if (value == "adobe")
+        m_rule.cmType = CM_ADOBE;
+    else {
+>>>>>>> ddca5c99 (probably doing something stupid)
         m_error += "invalid cm ";
         return false;
     }
